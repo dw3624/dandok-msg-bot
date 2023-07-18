@@ -1,29 +1,38 @@
 import asyncio
 import json
-import os
-import telegram
-import time
 import logging
-
-from typing import List
+import os
+import time
 from logging.handlers import RotatingFileHandler
+from typing import List
 
-from utils import clean_title, format_pub_date
-from network import fetch_naver_news_json
+import telegram
 from dotenv import load_dotenv
 
+from network import fetch_naver_news_json
+from utils import clean_title, format_pub_date
 
 load_dotenv()
 
 bot_token = os.getenv("BOT_TOKEN")
 bot = telegram.Bot(token=bot_token)
 chat_id = os.getenv("CHAT_ID")
-
+chat_id_admin = os.getenv("CHAT_ID_ADMIN")
+chat_id_list = [chat_id_admin]
 base_url = "https://openapi.naver.com/v1/search/news.json"
 client_id = os.getenv("NAVER_CLIENT_ID")
 client_secret = os.getenv("NAVER_CLIENT_SECRET")
 
-query_list = ["단독"]
+query_list = [
+    "서울경찰청 | 종로경찰서 | 성북경찰서 | 종암경찰서 | 종로소방서 | 성북소방서",
+    "서울중부경찰서 | 용산경찰서 | 남대문경찰서 | 서울중부소방서 | 용산소방서",
+    "서경대 | 한국예술종합학교 | 국민대 | 고려대 | 성신여대 | 상명대 | 한성대",
+    "광화문광장 | 서울광장 | 종로구 | 성북구 | 참여연대 | 종로집회 | 종로시위 | 사랑제일교회 | 숙명여대",
+    "용산 | 이태원 | 중구 | 남대문 | 특조위 | 사참위 | 진화위 | 한국프레스센터",
+    "도봉구 | 노원구 | 중랑구 | 동대문구 | 강북구 | 혜화 | 경실련",
+    "성균관대 | 한국외대 | 한국외국어대학교 | 경희대 | 북부지검 | 북부지법 | 북부지방검찰청",
+    "도봉경찰서 | 노원경찰서 | 중랑경찰서 | 동대문경찰서 | 강북경찰서 | 혜화경찰서 | 북부지방법원",
+]
 
 old_dandok_list = []
 
@@ -39,6 +48,11 @@ formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 file_handler.setFormatter(formatter)
 
 logger.addHandler(file_handler)
+
+
+async def send_telegram_message(message: str) -> None:
+    for chat_id in chat_id_list:
+        await bot.send_message(chat_id=chat_id, text=message)
 
 
 def log_exception(func):
@@ -68,8 +82,7 @@ def filter_old_news(old_dandok_list: List[dict]) -> List[dict]:
 async def get_dandok_list(query_list: List[str]) -> List[dict]:
     print("단독 기사 검색 중...")
     tasks = [
-        fetch_naver_news_json(query, base_url, client_id, client_secret)
-        for query in query_list
+        fetch_naver_news_json(query, base_url, client_id, client_secret) for query in query_list
     ]
     responses = await asyncio.gather(*tasks)
 
@@ -121,7 +134,7 @@ async def process_dandok_news():
     # 단독 기사 메시지 송신
     for new_dandok in new_dandok_list:
         text = f'{new_dandok["pubDate"]}\n{new_dandok["title"]}\n{new_dandok["link"]}'
-        await bot.send_message(chat_id=chat_id, text=text)
+        await send_telegram_message(text)
 
     # 이전 기사 목록 갱신
     old_dandok_list += new_dandok_list
@@ -136,13 +149,21 @@ async def process_dandok_news():
 
 async def main() -> None:
     global query_list
-    await bot.send_message(chat_id=chat_id, text="검색어 목록입니다:")
-    for query in query_list:
-        await bot.send_message(chat_id=chat_id, text=query)
+    try:
+        for chat_id in chat_id_list:
+            await bot.send_message(chat_id=chat_id, text="검색어 목록입니다:")
+            for query in query_list:
+                await bot.send_message(chat_id=chat_id, text=query)
 
-    while True:
-        await process_dandok_news()
-        await asyncio.sleep(60 * 5)
+        while True:
+            await process_dandok_news()
+            await asyncio.sleep(60 * 5)
+    except Exception as e:
+        await send_telegram_message(f"프로그램 실행 중 예외가 발생했습니다: {str(e)}")
+    finally:
+        await send_telegram_message("프로그램이 종료되었습니다.")
+
+    return
 
 
 if __name__ == "__main__":

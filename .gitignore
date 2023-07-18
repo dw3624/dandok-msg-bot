@@ -1,6 +1,6 @@
 .error.log
-.old_dandok_list.json
-vscode/
+old_dandok_list.json
+.vscode/
 
 
 # Created by https://www.toptal.com/developers/gitignore/api/venv,python
