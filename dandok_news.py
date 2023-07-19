@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import time
+from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from typing import List
 
@@ -10,7 +11,7 @@ import telegram
 from dotenv import load_dotenv
 
 from network import fetch_naver_news_json
-from utils import clean_title, format_pub_date
+from utils import clean_desc, clean_title, format_pub_date
 
 load_dotenv()
 
@@ -52,7 +53,7 @@ logger.addHandler(file_handler)
 
 async def send_telegram_message(message: str) -> None:
     for chat_id in chat_id_list:
-        await bot.send_message(chat_id=chat_id, text=message)
+        await bot.send_message(chat_id=chat_id, text=message, parse_mode="HTML")
 
 
 def log_exception(func):
@@ -92,16 +93,22 @@ async def get_dandok_list(query_list: List[str]) -> List[dict]:
         for news in news_items_list:
             title = clean_title(news.get("title", ""))
             if "[단독]" in title:
+                desc = clean_desc(news.get("description", ""))
                 link = news.get("originallink") or news.get("link")
                 pub_date = news.get("pubDate")
                 formatted_date = format_pub_date(pub_date)
                 item = {
                     "title": title,
+                    "desc": desc,
                     "link": link,
                     "pubDate": formatted_date,
                     "timestamp": time.time(),
                 }
                 dandok_list.append(item)
+
+    dandok_list = sorted(
+        dandok_list, key=lambda x: datetime.strptime(x["pubDate"], "%Y/%m/%d %H:%M")
+    )
     return dandok_list
 
 
@@ -121,7 +128,6 @@ async def process_dandok_news():
 
     # 단독 기사 목록 가져오기
     dandok_list = await get_dandok_list(query_list)
-    dandok_list = dandok_list[::-1]
 
     # 새로운 단독 기사 목록 필터링
     old_dandok_title_set = {old_dandok["title"] for old_dandok in old_dandok_list}
@@ -133,12 +139,14 @@ async def process_dandok_news():
 
     # 단독 기사 메시지 송신
     for new_dandok in new_dandok_list:
-        text = f'{new_dandok["pubDate"]}\n{new_dandok["title"]}\n{new_dandok["link"]}'
+        text = f'{new_dandok["pubDate"]}\
+                \n{new_dandok["title"]}\
+                \n\n{new_dandok["desc"]}\
+                \n\n<a href="{new_dandok["link"]}">기사 링크</a>'
         await send_telegram_message(text)
 
     # 이전 기사 목록 갱신
     old_dandok_list += new_dandok_list
-    old_dandok_list.sort(key=lambda x: x["timestamp"], reverse=True)
 
     # 기사 목록 저장
     with open("old_dandok_list.json", "w", encoding="utf-8") as f:

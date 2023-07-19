@@ -3,10 +3,16 @@ from datetime import datetime
 
 
 def clean_title(title: str) -> str:
-    title = re.sub("<.*?>", "", title)
     title = re.sub("&quot;", '"', title)
     title = re.sub("&apos;", "'", title)
     return title
+
+
+def clean_desc(desc: str) -> str:
+    desc = desc.replace("<b>", "📌<b>")
+    desc = re.sub("&quot;", '"', desc)
+    desc = re.sub("&apos;", "'", desc)
+    return desc
 
 
 def format_pub_date(pub_date: str) -> str:
